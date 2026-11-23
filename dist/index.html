@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#2c594c"><meta name="description" content="수입과 지출을 달력에 차곡차곡 기록하는 로컬 가계부">
+  <title>차곡</title>
+  <link rel="stylesheet" href="./style.css"><link rel="stylesheet" href="./workspace.css"><script src="./holidays.js" defer></script><script src="./analysis.js" defer></script><script src="./budget.js" defer></script><script src="./monthly.js" defer></script><script src="./month-picker.js" defer></script><script src="./recurring.js" defer></script><script src="./app.js" defer></script>
+</head>
+<body>
+  <header class="topbar"><a class="brand" href="./"><span class="brand-icon" aria-hidden="true">▤</span>차곡</a><div class="header-actions"><button id="budget-overview-open" type="button" class="secondary-button">예산</button><button id="analysis-open" type="button" class="secondary-button">분석</button><button id="entry-open" type="button" class="primary-button">＋ 기록</button></div><span class="save-label"><i></i><span id="save-state">로컬 DB 연결 중</span></span></header>
+  <main>
+    <h1 class="sr-only">차곡 가계부</h1>
+    <section class="summary" aria-label="조회 월의 합계" aria-live="polite">
+      <article><div class="card-label" id="expense-label">이번 달 지출</div><p class="total" id="expense">—</p><span id="expense-count" class="sr-only"></span></article>
+      <article><div class="card-label" id="income-label">이번 달 수입</div><p class="total" id="income">—</p><span id="income-count" class="sr-only"></span></article>
+      <article class="summary-budget"><div class="budget-summary-label"><span class="card-label">남은 예산</span></div><p class="total" id="summary-budget-remaining">—</p><div id="summary-budget-track" class="summary-budget-track" hidden><span id="summary-budget-bar"></span></div><p id="summary-budget-status" class="sr-only" role="status"></p></article>
+      <article class="sr-only"><span id="balance-label">월 차액</span><span id="balance"></span></article>
+    </section>
+    <div class="workspace">
+      <div class="calendar-column">
+        <div class="calendar-toolbar">
+          <div class="month-navigation" id="month-picker-container">
+            <input type="hidden" id="month">
+            <button id="prev-month" class="icon-button" aria-label="이전 달" type="button">‹</button>
+            <button id="month-toggle" class="month-toggle" type="button" aria-expanded="false" aria-haspopup="dialog" aria-controls="month-popover"><span id="month-label">연월 선택</span><span class="month-chevron" aria-hidden="true">▾</span></button>
+            <button id="next-month" class="icon-button" aria-label="다음 달" type="button">›</button>
+            <button id="today-month" class="today-button" type="button">오늘</button>
+            <div id="month-popover" class="month-popover" role="dialog" aria-labelledby="month-popover-title" hidden>
+              <div class="month-popover-heading"><h2 id="month-popover-title">월 선택</h2><button id="month-popover-close" type="button" class="dialog-close" aria-label="월 선택 닫기">닫기</button></div>
+              <div class="month-year-controls"><button id="month-year-prev" type="button" class="icon-button" aria-label="이전 연도">‹</button><label class="sr-only" for="month-year">연도</label><input id="month-year" type="number" min="1000" max="9999" step="1" inputmode="numeric" aria-describedby="month-year-error"><span>년</span><button id="month-year-next" type="button" class="icon-button" aria-label="다음 연도">›</button></div>
+              <p id="month-year-error" class="error" role="alert" hidden></p>
+              <div id="month-options" class="month-options" role="group" aria-label="월"></div>
+            </div>
+          </div>
+        <div class="month-view-tabs" role="tablist" aria-label="기록 조회 방식">
+          <button id="view-calendar" type="button" role="tab" aria-selected="true" aria-controls="calendar-view" tabindex="0">월</button>
+          <button id="view-week" type="button" role="tab" aria-selected="false" aria-controls="calendar-view" tabindex="-1">주</button>
+          <button id="view-monthly" type="button" role="tab" aria-selected="false" aria-controls="monthly-view" tabindex="-1">내역</button>
+        </div>
+        </div>
+        <div id="calendar-view" role="tabpanel" aria-labelledby="view-calendar">
+        <section class="calendar-panel" aria-labelledby="calendar-title">
+          <div id="calendar-week-navigation" class="calendar-week-navigation" hidden><button id="calendar-prev-week" class="secondary-button" type="button">‹ 이전 주</button><span id="calendar-week-range" aria-live="polite"></span><button id="calendar-next-week" class="secondary-button" type="button">다음 주 ›</button></div>
+          <div class="section-title"><h2 id="calendar-title">월간 지출</h2><div class="calendar-legend"><span class="income">+ 수입</span><span class="expense">− 지출</span><button id="recurring-open" class="recurring-link" type="button" aria-haspopup="dialog">반복 일정 <span id="recurring-count" hidden></span></button></div></div>
+          <p class="muted" id="calendar-status" role="status">기록을 불러오는 중이에요.</p>
+          <div id="calendar-weekdays" class="weekdays" aria-hidden="true"><span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div>
+          <div class="calendar-grid" id="calendar-grid" role="group" aria-label="월간 달력"></div>
+          <p id="holiday-note" class="holiday-note" role="status"></p>
+          <div id="load-error" class="load-error" role="alert" hidden><p>기록을 불러오지 못했어요. 로컬 서버가 실행 중인지 확인해 주세요.</p><button id="retry-load" type="button">다시 불러오기</button></div>
+        </section>
+        <section class="history-panel" aria-labelledby="day-title"><div class="section-title"><div class="history-title"><h2 id="day-title" tabindex="-1">선택한 날짜</h2><span id="record-count" class="count">0</span></div></div>
+          <p class="day-summary" id="day-summary" aria-live="polite"></p>
+          <p class="day-holiday" id="day-holiday" aria-live="polite"></p>
+          <section id="recurring-day" aria-labelledby="recurring-day-title" hidden><h3 id="recurring-day-title" tabindex="-1">이 날짜의 반복 지출</h3><div id="recurring-day-list" class="recurring-list"></div></section>
+          <div class="day-tools"><div class="daily-filters" role="group" aria-label="선택한 날짜의 기록 구분"><button type="button" data-day-type="all" aria-pressed="true">전체</button><button type="button" data-day-type="expense" aria-pressed="false">지출</button><button type="button" data-day-type="income" aria-pressed="false">수입</button></div><div class="personal-day"><span id="personal-day-label" aria-live="polite"></span><button id="personal-open" type="button" disabled>개인 휴일 지정</button></div></div><div id="records"></div>
+          <div id="empty" class="empty" hidden><h3>기록이 없어요</h3></div><button id="day-entry-open" class="day-entry-open" type="button">＋ 이 날짜에 기록</button>
+        </section>
+        </div>
+        <section id="monthly-view" class="monthly-panel" role="tabpanel" aria-labelledby="view-monthly" hidden>
+          <h2 id="monthly-title" tabindex="-1">월 전체 내역</h2>
+          <label class="sr-only" for="monthly-search">거래 내용 검색</label><input id="monthly-search" class="field monthly-search" type="search" placeholder="내용을 검색하세요" maxlength="80" autocomplete="off">
+          <div class="monthly-toolbar">
+            <div class="monthly-desktop-filters">
+              <label>구분<select id="monthly-type" class="field"><option value="all">전체</option><option value="expense">지출</option><option value="income">수입</option></select></label>
+              <label>카테고리<select id="monthly-category" class="field"><option value="all">전체</option></select></label>
+              <label id="monthly-payment-label">결제수단<select id="monthly-payment" class="field"><option value="all">전체</option></select></label>
+            </div>
+            <button id="monthly-filter-open" class="monthly-filter-open" type="button">필터</button>
+            <label class="monthly-sort">정렬<select id="monthly-sort" class="field"><option value="desc">최신순</option><option value="asc">과거순</option></select></label>
+          </div>
+          <div class="monthly-result-heading"><p id="monthly-result" role="status"></p><button id="monthly-reset" class="monthly-link" type="button" hidden>필터 초기화</button></div>
+          <p id="monthly-action-status" class="monthly-action-status" role="status"></p>
+          <p id="monthly-status" class="muted" role="status">기록을 불러오는 중이에요.</p>
+          <button id="monthly-retry" type="button" class="monthly-secondary" hidden>다시 불러오기</button>
+          <div id="monthly-scroll" class="monthly-scroll" role="region" aria-label="월 전체 거래 목록" tabindex="0"><div id="monthly-list"></div><button id="monthly-more" type="button" class="monthly-secondary" hidden>더 보기</button></div>
+          <button id="monthly-empty-action" type="button" class="monthly-secondary" hidden>기록 입력하기</button>
+        </section>
+      </div>
+
+    </div>
+  </main><div class="toast" id="toast" role="status"></div>
+  <dialog id="entry-dialog" aria-labelledby="entry-title">      <section class="entry-panel"><div class="section-title"><h2 id="entry-title">새 기록</h2><button id="entry-close" class="dialog-close" type="button">닫기</button></div>
+        <p id="recurring-context" class="recurring-context" hidden></p>
+        <form id="entry-form">
+          <fieldset class="type-picker"><legend class="sr-only">기록 종류</legend><label><input id="type-expense" type="radio" name="type" value="expense" checked><span>↑ 지출</span></label><label><input id="type-income" type="radio" name="type" value="income"><span>↓ 수입</span></label></fieldset>
+          <label class="field-label" for="amount">금액 <span class="required">*</span></label><div class="amount-field"><input id="amount" name="amount" type="text" inputmode="numeric" placeholder="0" autocomplete="off" required maxlength="15"><span>원</span></div>
+          <label class="field-label" for="date">날짜 <span class="required">*</span></label><input class="field" id="date" name="date" type="date" min="1000-01-01" max="9999-12-31" required>
+          <div class="category-field-label"><label class="field-label" for="category">카테고리</label><button id="manage-categories" type="button">카테고리 관리</button></div>
+          <select class="field" id="category" name="category"><option value="">미분류</option></select>
+          <div id="payment-field">
+            <div class="category-field-label"><label class="field-label" for="payment-method">결제수단 <span class="optional">선택</span></label><button id="manage-payments" type="button">결제수단 관리</button></div>
+            <select class="field" id="payment-method" name="paymentMethod"><option value="">미지정</option></select>
+          </div>
+          <label class="field-label" for="memo">내용 <span class="optional">선택</span></label><input class="field" id="memo" name="memo" placeholder="어디에 사용했나요?" maxlength="80" autocomplete="off">
+          <p id="form-error" class="error" role="alert"></p><button class="submit" id="submit-entry" type="submit">＋ 기록 추가</button>
+          <button class="cancel-edit" id="cancel-edit" type="button" hidden>수정 취소</button>
+          <button class="secondary-button recurring-skip" id="recurring-skip" type="button" hidden>이번만 건너뛰기</button>
+        </form>
+      </section>
+  </dialog>
+  <dialog id="budget-overview-dialog" aria-labelledby="budget-heading"><div class="overlay-heading"><h2>예산 관리</h2><button id="budget-overview-close" class="dialog-close" type="button">닫기</button></div>    <section id="budget-card" class="budget-card" aria-labelledby="budget-heading">
+      <div class="budget-heading"><h2 id="budget-heading">이번 달 예산</h2><button id="budget-open" type="button" disabled>예산 설정</button></div>
+      <p id="budget-status" role="status">예산을 불러오는 중이에요.</p>
+      <button id="budget-retry" type="button" hidden>다시 불러오기</button>
+      <div id="budget-content" hidden>
+        <p id="budget-remaining" class="budget-remaining" aria-live="polite"></p>
+        <div class="budget-usage"><span id="budget-used"></span><strong id="budget-percent"></strong></div>
+        <div id="budget-progress" class="budget-track" role="progressbar" aria-label="월 예산 사용률" aria-valuemin="0" aria-valuemax="100"><span id="budget-bar"></span></div>
+        <div class="budget-footer"><button id="budget-toggle" type="button" aria-expanded="false" aria-controls="budget-details">카테고리별 현황 보기 ⌄</button><span id="budget-alert"></span></div>
+        <div id="budget-details" hidden><div id="budget-category-list"></div><div id="budget-unassigned"></div></div>
+      </div>
+      <p class="budget-note">미래 기록 포함</p>
+    </section>
+  </dialog>
+  <dialog id="analysis-overview-dialog" aria-label="가계부 분석"><div class="overlay-heading"><h2>분석</h2><button id="analysis-overview-close" class="dialog-close" type="button">닫기</button></div>      <aside class="analysis-panel" aria-label="가계부 분석">
+        <div class="analysis-view-tabs" role="tablist" aria-label="분석 방식">
+          <button id="tab-category" type="button" role="tab" aria-selected="true" aria-controls="category-analysis" tabindex="0">카테고리별</button>
+          <button id="tab-weekly" type="button" role="tab" aria-selected="false" aria-controls="weekly-analysis" tabindex="-1">주간</button>
+          <button id="tab-payment" type="button" role="tab" aria-selected="false" aria-controls="payment-analysis" tabindex="-1">결제수단별</button>
+          <button id="tab-comparison" type="button" role="tab" aria-selected="false" aria-controls="comparison-analysis" tabindex="-1">전월 비교</button>
+        </div>
+        <section id="category-analysis" role="tabpanel" aria-labelledby="tab-category" tabindex="0">
+        <div class="analysis-heading"><h2 id="analysis-title">카테고리 분석</h2><div><p id="analysis-month"></p><strong id="analysis-total">0원</strong></div></div>
+        <div class="analysis-tabs" role="group" aria-label="카테고리 분석 종류"><button id="analysis-expense" type="button" aria-pressed="true">지출</button><button id="analysis-income" type="button" aria-pressed="false">수입</button></div>
+        <p id="analysis-status" class="analysis-status" role="status">기록을 불러오는 중이에요.</p>
+        <div id="analysis-donut" class="analysis-donut" hidden><svg id="analysis-chart" viewBox="0 0 240 240" role="group" aria-label="카테고리별 금액 비중"></svg><div class="donut-center" aria-live="polite"><span id="analysis-center-name">총지출</span><strong id="analysis-center-amount"></strong><span id="analysis-center-percent"></span></div></div>
+        <div id="analysis-list" class="analysis-list"></div>
+        <button id="analysis-reset" class="analysis-reset" type="button" hidden>전체 보기</button>
+        <button id="analysis-details" class="analysis-details" type="button" disabled>카테고리를 선택해 주세요</button>
+        </section>
+        <section id="weekly-analysis" class="weekly-panel" role="tabpanel" aria-labelledby="tab-weekly" tabindex="0" hidden>
+          <div class="section-title"><h2 id="weekly-title">주간 지출</h2><div class="weekly-nav"><button id="prev-week" type="button" aria-label="이전 주">‹</button><button id="next-week" type="button" aria-label="다음 주">›</button></div></div>
+          <p id="weekly-range" class="muted"></p><strong id="weekly-total" class="weekly-total" aria-live="polite">—</strong>
+          <p id="weekly-status" class="muted" role="status">기록을 불러오는 중이에요.</p>
+          <div id="weekly-chart" class="weekly-chart" role="group" aria-label="월요일부터 일요일까지 일별 지출" hidden></div>
+          <button id="retry-week" type="button" hidden>다시 불러오기</button>
+        </section>
+        <section id="payment-analysis" role="tabpanel" aria-labelledby="tab-payment" tabindex="0" hidden>
+          <div class="section-title"><h2>결제수단별 지출</h2><span id="payment-analysis-month" class="analysis-status"></span></div>
+          <p id="payment-analysis-status" class="analysis-status" role="status">기록을 불러오는 중이에요.</p>
+          <button id="payment-analysis-retry" class="secondary-button" type="button" hidden>다시 불러오기</button>
+          <div id="payment-analysis-content" hidden>
+            <div class="payment-analysis-grid">
+              <div id="payment-analysis-donut" class="payment-analysis-donut"><div class="payment-analysis-center" aria-live="polite"><span id="payment-analysis-center-label"></span><strong id="payment-analysis-center-value"></strong></div></div>
+              <div id="payment-analysis-legend" role="group" aria-label="결제수단별 지출"></div>
+            </div>
+            <div class="payment-analysis-actions"><button id="payment-analysis-reset" class="secondary-button" type="button" hidden>전체 보기</button></div>
+            <section id="payment-analysis-detail" aria-labelledby="payment-analysis-detail-title" hidden>
+              <h3 id="payment-analysis-detail-title"></h3>
+              <p id="payment-analysis-detail-summary" class="analysis-status"></p>
+              <ul id="payment-analysis-records"></ul>
+            </section>
+          </div>
+        </section>
+        <section id="comparison-analysis" role="tabpanel" aria-labelledby="tab-comparison" tabindex="0" hidden>
+          <h2>날짜별 누적 지출</h2>
+          <p id="comparison-period" class="comparison-period"></p>
+          <p id="comparison-status" class="comparison-period" role="status"></p>
+          <button id="comparison-retry" class="secondary-button" type="button" hidden>다시 불러오기</button>
+          <div id="comparison-content" hidden>
+            <div class="comparison-legend">
+              <span><i aria-hidden="true"></i><span id="comparison-current-label"></span></span>
+              <span><i aria-hidden="true"></i><span id="comparison-previous-label"></span></span>
+            </div>
+            <canvas id="comparison-chart" aria-hidden="true"></canvas>
+            <div class="comparison-slider">
+              <label for="comparison-day">비교 날짜</label>
+              <span id="comparison-day-label" aria-hidden="true"></span>
+              <input id="comparison-day" type="range" min="1" step="1">
+            </div>
+            <div class="comparison-summary" aria-live="polite">
+              <div><span id="comparison-current-date"></span><strong id="comparison-current-total"></strong></div>
+              <div><span id="comparison-previous-date"></span><strong id="comparison-previous-total"></strong></div>
+              <p id="comparison-delta"></p>
+            </div>
+          </div>
+        </section>
+      </aside>  </dialog>
+  <dialog id="delete-dialog" aria-labelledby="delete-title" aria-describedby="delete-preview delete-description">
+    <h2 id="delete-title">이 기록을 삭제할까요?</h2><p id="delete-preview"></p><p id="delete-description">삭제하면 내역과 달력, 합계에서 제외돼요.</p><p id="delete-error" class="error" role="alert"></p>
+    <div class="dialog-actions"><button id="cancel-delete" type="button" autofocus>취소</button><button id="confirm-delete" class="danger" type="button">삭제하기</button></div>
+  </dialog>
+  <dialog id="category-dialog" aria-labelledby="category-title">
+    <div class="section-title"><h2 id="category-title">카테고리 관리</h2><button id="category-close" type="button" class="dialog-close" aria-label="카테고리 관리 닫기">닫기</button></div>
+    <form id="category-form">
+      <label class="field-label" for="category-type">구분</label><select class="field" id="category-type"><option value="expense">지출</option><option value="income">수입</option></select>
+      <label class="field-label" for="category-name">카테고리 이름</label><input class="field" id="category-name" type="text" maxlength="30" required placeholder="예: 식비, 급여" autocomplete="off">
+      <fieldset class="category-colors"><legend>기본 팔레트</legend><div id="category-palette" class="category-palette" role="group" aria-label="카테고리 기본 색상"></div></fieldset>
+      <div class="category-custom-color"><label for="category-color">직접 색상 선택</label><input id="category-color" type="color" value="#3f6b57"><output id="category-color-value" for="category-color">#3f6b57</output></div>
+      <div class="category-form-actions"><button id="category-save" class="submit" type="submit">카테고리 등록</button><button id="category-edit-cancel" class="cancel-edit" type="button" hidden>수정 취소</button></div>
+    </form>
+    <p id="category-error" class="error" role="alert"></p>
+    <section class="category-delete-panel" id="category-delete-panel" aria-label="카테고리 삭제 확인" hidden><p id="category-delete-preview"></p><div class="dialog-actions"><button id="category-delete-cancel" type="button">취소</button><button id="category-delete-confirm" class="danger" type="button">삭제하기</button></div></section>
+    <div class="category-list-heading"><h3>등록한 카테고리</h3><button id="category-reload" type="button">다시 불러오기</button></div>
+    <div id="category-list"></div><p id="category-empty" class="category-description">등록한 카테고리가 없어요.</p>
+  </dialog>
+  <dialog id="monthly-filter-dialog" aria-labelledby="monthly-filter-title">
+    <div class="section-title"><h2 id="monthly-filter-title">내역 필터</h2><button id="monthly-filter-close" type="button" class="dialog-close">닫기</button></div>
+    <label class="field-label" for="monthly-mobile-type">구분</label><select id="monthly-mobile-type" class="field"><option value="all">전체</option><option value="expense">지출</option><option value="income">수입</option></select>
+    <label class="field-label" for="monthly-mobile-category">카테고리</label><select id="monthly-mobile-category" class="field"></select>
+    <div id="monthly-mobile-payment-label"><label class="field-label" for="monthly-mobile-payment">결제수단</label><select id="monthly-mobile-payment" class="field"></select></div>
+    <div class="dialog-actions"><button id="monthly-filter-reset" type="button">초기화</button><button id="monthly-filter-apply" type="button" class="submit">적용</button></div>
+  </dialog>
+  <dialog id="budget-dialog" aria-labelledby="budget-dialog-title">
+    <div class="section-title"><h2 id="budget-dialog-title">예산 설정</h2><button id="budget-close" type="button" class="dialog-close">닫기</button></div>
+    <form id="budget-form">
+      <div class="budget-editor-body">
+        <label class="field-label" for="budget-amount">월 전체 예산</label><div class="budget-money"><input id="budget-amount" class="field" inputmode="numeric" maxlength="15" required autocomplete="off"><span>원</span></div>
+        <h3>카테고리별 예산 <span class="optional">선택사항</span></h3>
+        <p class="category-description">빈칸: 미설정 · 0원: 지출 한도 0원</p>
+        <div id="budget-inputs"></div>
+        <p id="budget-no-categories" class="category-description" hidden>지출 카테고리를 등록하면 항목별 예산도 설정할 수 있어요.</p>
+        <div class="budget-allocation"><p>카테고리 배정 합계 <strong id="budget-allocated">0원</strong></p><p><span id="budget-unallocated-label">미배정 예산</span><strong id="budget-unallocated">0원</strong></p></div>
+        <button id="budget-copy" class="budget-link" type="button">지난달 예산 불러오기</button>
+        <p id="budget-copy-status" role="status" class="category-description"></p>
+        <button id="budget-delete" class="budget-link danger" type="button" hidden>이 달 예산 삭제</button>
+        <section id="budget-delete-panel" class="category-delete-panel" hidden aria-label="예산 삭제 확인"><p>이 달 예산을 삭제할까요? 거래 내역은 유지돼요.</p><div class="dialog-actions"><button id="budget-delete-cancel" type="button">취소</button><button id="budget-delete-confirm" type="button" class="danger">예산 삭제</button></div></section>
+        <p id="budget-error" class="error" role="alert"></p>
+      </div>
+      <div class="budget-dialog-actions"><button id="budget-cancel" type="button">취소</button><button id="budget-save" class="submit" type="submit">저장</button></div>
+    </form>
+  </dialog>
+  <dialog id="payment-dialog" aria-labelledby="payment-title">
+    <div class="section-title"><h2 id="payment-title">결제수단 관리</h2><button id="payment-close" type="button" class="dialog-close">닫기</button></div>
+    <p class="category-description">사용 중지해도 과거 기록은 유지됩니다.</p>
+    <form id="payment-form">
+      <label class="field-label" for="payment-name">결제수단 이름</label><input class="field" id="payment-name" maxlength="30" required placeholder="예: 현대카드" autocomplete="off">
+      <div class="category-form-actions"><button id="payment-save" class="submit" type="submit">결제수단 등록</button><button id="payment-edit-cancel" class="cancel-edit" type="button" hidden>수정 취소</button></div>
+    </form>
+    <p id="payment-error" class="error" role="alert"></p>
+    <section id="payment-confirm-panel" class="category-delete-panel" aria-label="결제수단 변경 확인" hidden><p id="payment-confirm-preview"></p><div class="dialog-actions"><button id="payment-confirm-cancel" type="button">취소</button><button id="payment-confirm" type="button">확인</button></div></section>
+    <div class="category-list-heading"><h3>등록한 결제수단</h3><button id="payment-reload" type="button">다시 불러오기</button></div>
+    <div id="payment-list"></div><p id="payment-empty" class="category-description">등록한 결제수단이 없어요.</p>
+  </dialog>
+  <dialog id="expense-detail-dialog" aria-labelledby="expense-detail-title">
+    <div class="overlay-heading"><h2 id="expense-detail-title">지출 상세</h2><button id="expense-detail-close" type="button" class="dialog-close">닫기</button></div>
+    <div class="expense-detail-heading"><h3 id="expense-detail-name"></h3><strong id="expense-detail-amount"></strong></div>
+    <dl class="expense-detail-facts">
+      <div><dt>결제일</dt><dd id="expense-detail-date"></dd></div>
+      <div><dt>카테고리</dt><dd id="expense-detail-category"></dd></div>
+      <div><dt>결제수단</dt><dd id="expense-detail-payment"></dd></div>
+    </dl>
+    <section class="expense-detail-recurring" aria-label="반복 일정">
+      <label id="expense-repeat-toggle-label" class="expense-repeat-toggle" hidden><span>매월 반복</span><input id="expense-repeat-toggle" type="checkbox" role="switch" aria-controls="expense-repeat-form"></label>
+      <div id="expense-repeat-linked" class="expense-repeat-linked" hidden><p id="expense-repeat-status" role="status"></p><button id="expense-repeat-view" type="button" class="secondary-button">일정 보기</button></div>
+      <form id="expense-repeat-form" hidden>
+        <label class="field-label" for="expense-repeat-start">첫 결제 예정일</label><input id="expense-repeat-start" class="field" name="startsOn" type="date" max="9999-12-31" required>
+        <label class="field-label" for="expense-repeat-day">매월 결제일</label><input id="expense-repeat-day" class="field" name="repeatDay" type="number" inputmode="numeric" min="1" max="31" aria-describedby="expense-repeat-help" required>
+        <p id="expense-repeat-help" class="category-description">해당 날짜가 없는 달은 말일에 표시해요.</p>
+        <label class="field-label" for="expense-repeat-amount">기본 금액 (원) <span class="optional">선택</span></label><input id="expense-repeat-amount" class="field" name="amount" type="number" inputmode="numeric" min="1" max="999999999999">
+        <p id="expense-repeat-error" class="error" role="alert"></p>
+        <button id="expense-repeat-save" class="submit" type="submit">반복 일정 저장</button>
+      </form>
+    </section>
+  </dialog>
+  <dialog id="recurring-dialog" aria-labelledby="recurring-title">
+    <div class="overlay-heading"><h2 id="recurring-title">반복 일정</h2><button id="recurring-close" type="button" class="dialog-close">닫기</button></div>
+    <div id="recurring-month-section">
+      <div class="recurring-heading"><h3 id="recurring-inbox-title" tabindex="-1">확인할 결제</h3></div>
+      <div id="recurring-inbox-list" class="recurring-list"></div>
+      <button id="recurring-inbox-more" class="secondary-button recurring-list-action" type="button" hidden>더 보기</button>
+      <button id="recurring-inbox-retry" class="secondary-button recurring-list-action" type="button" hidden>다시 불러오기</button>
+      <div class="recurring-heading"><h3 id="recurring-month-title" tabindex="-1">이달 결제 일정</h3><button id="recurring-new" class="secondary-button" type="button">＋ 일정 추가</button></div>
+      <div id="recurring-month-summary" class="recurring-month-summary" role="status" hidden>
+        <span>이달 반복 결제 합계</span>
+        <strong id="recurring-month-total"></strong>
+        <small id="recurring-month-unknown" hidden></small>
+      </div>
+      <div id="recurring-month-list" class="recurring-list"></div>
+      <div class="recurring-heading"><h3>등록한 일정</h3><button id="recurring-retry" type="button" class="recurring-link" hidden>다시 불러오기</button></div>
+      <div id="recurring-rule-list" class="recurring-list"></div>
+    </div>
+    <section id="recurring-review" hidden>
+      <button id="recurring-review-back" class="secondary-button" type="button">목록으로</button>
+      <h3 id="recurring-review-title" tabindex="-1"></h3>
+      <p id="recurring-review-summary"></p>
+      <div id="recurring-review-actions" class="recurring-review-actions">
+        <button id="recurring-review-record" class="primary-button" type="button">지출 기록</button>
+        <button id="recurring-review-link" class="secondary-button" type="button">기존 지출 연결</button>
+        <button id="recurring-review-skip" class="secondary-button" type="button">이번만 건너뛰기</button>
+        <button id="recurring-review-unlink" class="secondary-button" type="button" hidden>연결 해제</button>
+      </div>
+      <section id="recurring-search-panel" hidden>
+        <form id="recurring-search">
+          <div class="recurring-search-dates">
+            <label>시작일<input class="field" name="start" type="date" min="1000-01-01" max="9999-12-31" required></label>
+            <label>종료일<input class="field" name="end" type="date" min="1000-01-01" max="9999-12-31" required></label>
+          </div>
+          <label>거래명<input class="field" name="q" type="search" maxlength="80"></label>
+          <button class="secondary-button recurring-list-action" type="submit">지출 검색</button>
+        </form>
+        <div id="recurring-candidates" class="recurring-list" aria-live="polite"></div>
+        <button id="recurring-candidates-more" class="secondary-button recurring-list-action" type="button" hidden>지출 더 보기</button>
+      </section>
+      <section id="recurring-link-confirm" hidden>
+        <p id="recurring-link-preview"></p>
+        <div class="recurring-review-actions">
+          <button id="recurring-link-apply" class="primary-button" type="button">이 지출 연결</button>
+          <button id="recurring-link-cancel" class="secondary-button" type="button">검색 결과로</button>
+        </div>
+      </section>
+      <p id="recurring-review-error" class="error" role="alert"></p>
+    </section>
+    <form id="recurring-form" hidden>
+      <h3 id="recurring-form-title">일정 추가</h3>
+      <label class="field-label" for="recurring-name">이름</label><input id="recurring-name" class="field" name="name" maxlength="80" required>
+      <label class="field-label" for="recurring-start">첫 결제 예정일</label><input id="recurring-start" class="field" name="startsOn" type="date" min="1000-01-01" max="9999-12-31" aria-describedby="recurring-date-help" required>
+      <p id="recurring-date-help" class="category-description">매월 같은 날에 표시해요. 그 날짜가 없는 달은 말일에 표시해요.</p>
+      <div id="recurring-day-setting" class="recurring-heading" hidden>
+        <span id="recurring-current-day"></span><button id="recurring-day-change" class="secondary-button" type="button">매월 결제일 변경</button>
+      </div>
+      <label class="field-label" for="recurring-amount">기본 금액 (원) <span class="optional">선택</span></label><input id="recurring-amount" class="field" name="amount" type="number" inputmode="numeric" min="1" max="999999999999">
+      <label class="field-label" for="recurring-category">카테고리</label><select id="recurring-category" class="field" name="categoryId"></select>
+      <label class="field-label" for="recurring-payment">결제수단</label><select id="recurring-payment" class="field" name="paymentMethodId"></select>
+      <label class="field-label" for="recurring-end">종료일 <span class="optional">선택</span></label><input id="recurring-end" class="field" name="endsOn" type="date" min="1000-01-01" max="9999-12-31">
+      <p id="recurring-error" class="error" role="alert"></p>
+      <div class="dialog-actions"><button id="recurring-cancel" type="button">취소</button><button id="recurring-save" class="submit" type="submit">일정 저장</button></div>
+      <button id="recurring-delete" class="recurring-link recurring-delete" type="button" hidden>일정 삭제</button>
+    </form>
+    <form id="recurring-day-form" hidden>
+      <h3>매월 결제일 변경</h3>
+      <label class="field-label" for="recurring-new-day">새 결제일 (매월)</label>
+      <input id="recurring-new-day" class="field" name="repeatDay" type="number" min="1" max="31" inputmode="numeric" required>
+      <label class="field-label" for="recurring-effective-month">적용 시작 월</label>
+      <input id="recurring-effective-month" class="field" name="effectiveMonth" type="month" required>
+      <p id="recurring-day-preview" class="recurring-context" role="status"></p>
+      <p id="recurring-day-warning" class="category-description" hidden>선택한 월 이후에 예약한 결제일 변경도 이번 설정으로 바뀝니다.</p>
+      <p id="recurring-day-error" class="error" role="alert"></p>
+      <div class="dialog-actions"><button id="recurring-day-cancel" type="button">취소</button><button class="submit" type="submit">결제일 변경 저장</button></div>
+    </form>
+    <section id="recurring-delete-confirmation" aria-labelledby="recurring-delete-title" hidden>
+      <h3 id="recurring-delete-title">반복 일정을 삭제할까요?</h3>
+      <p id="recurring-delete-summary"></p>
+      <p>이 일정의 예정·미기록 결제가 달력과 확인 목록에서 사라집니다. 이미 저장한 지출은 내역에 남습니다.</p>
+      <p id="recurring-delete-error" class="error" role="alert"></p>
+      <div class="dialog-actions"><button id="recurring-delete-cancel" type="button">취소</button><button id="recurring-delete-apply" class="danger" type="button">일정 삭제</button></div>
+    </section>
+  </dialog>
+  <dialog id="personal-dialog" aria-labelledby="personal-title">
+    <div class="section-title"><h2 id="personal-title">개인 휴일 지정</h2><button id="personal-close" type="button" class="dialog-close">닫기</button></div>
+    <form id="personal-form">
+      <label class="field-label" for="personal-date">날짜</label><input class="field" id="personal-date" type="date" min="1000-01-01" max="9999-12-31" required>
+      <label class="field-label" for="personal-name">휴일 이름</label><input class="field" id="personal-name" type="text" maxlength="30" required placeholder="예: 연차, 회사 휴무" autocomplete="off">
+      <button id="personal-save" class="submit" type="submit">개인 휴일 저장</button>
+    </form>
+    <p id="personal-error" class="error" role="alert"></p><button id="personal-remove" class="cancel-edit" type="button" hidden>개인 휴일 삭제</button>
+    <section id="personal-delete-panel" class="category-delete-panel" aria-label="개인 휴일 삭제 확인" hidden><p id="personal-delete-preview"></p><div class="dialog-actions"><button id="personal-delete-cancel" type="button">취소</button><button id="personal-delete-confirm" class="danger" type="button">삭제하기</button></div></section>
+  </dialog>
+  <dialog id="analysis-dialog" aria-labelledby="analysis-dialog-title">
+    <div class="section-title"><h2 id="analysis-dialog-title">카테고리 내역</h2><button id="analysis-close" class="dialog-close" type="button">닫기</button></div>
+    <p id="analysis-dialog-summary" class="category-description"></p><div id="analysis-records"></div>
+  </dialog>
+</body>
+</html>

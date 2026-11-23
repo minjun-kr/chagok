@@ -1,0 +1,20 @@
+{
+  "name": "chagok-budget",
+  "version": "0.1.0",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "start": "node server.mjs",
+    "capture": "node capture.mjs",
+    "test": "node check.mjs && node category-check.mjs && node analysis-check.mjs && node color-migration-check.mjs && node weekly-check.mjs && node payment-check.mjs && node budget-check.mjs && node monthly-check.mjs && node month-picker-check.mjs && node recurring-check.mjs",
+    "test:ui": "node workspace-check.mjs"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.65.1"
+  }
+}

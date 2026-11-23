@@ -1,0 +1,10 @@
+/data/
+/node_modules/
+/artifacts/
+/.openai/
+.env
+.env.*
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
